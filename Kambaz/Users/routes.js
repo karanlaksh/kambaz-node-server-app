@@ -45,23 +45,29 @@ export default function UserRoutes(app, db) {
     res.json(currentUser);
   };
 
-  const signin = (req, res) => {
-    const { username, password, loginId } = req.body;
-    let currentUser;
-    
-    if (loginId) {
-      currentUser = dao.findUserByLoginId(loginId);
-    } else {
-      currentUser = dao.findUserByCredentials(username, password);
-    }
+ const signin = (req, res) => {
+  const { username, password, loginId } = req.body;
+  
+  // Check if credentials are provided
+  if (!loginId && (!username || !password)) {
+    return res.status(400).json({ message: "Username and password are required" });
+  }
+  
+  let currentUser;
+  
+  if (loginId) {
+    currentUser = dao.findUserByLoginId(loginId);
+  } else {
+    currentUser = dao.findUserByCredentials(username, password);
+  }
 
-    if (currentUser) {
-      req.session["currentUser"] = currentUser;
-      res.json(currentUser);
-    } else {
-      res.status(401).json({ message: "Unable to login. Try again later." });
-    }
-  };
+  if (currentUser) {
+    req.session["currentUser"] = currentUser;
+    res.json(currentUser);
+  } else {
+    res.status(401).json({ message: "Unable to login. Try again later." });
+  }
+};
 
   const signout = (req, res) => {
     req.session.destroy((err) => {
