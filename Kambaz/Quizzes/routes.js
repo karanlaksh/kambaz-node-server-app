@@ -78,6 +78,57 @@ export default function QuizzesRoutes(app) {
     res.json(status);
   };
 
+  // ==================== ATTEMPT ROUTES ====================
+
+  // Get attempts for current user on a quiz
+  const findAttemptsForQuiz = async (req, res) => {
+    const { quizId } = req.params;
+    const userId = req.session?.currentUser?._id;
+    if (!userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const attempts = await dao.findAttemptsForQuiz(quizId, userId);
+    res.json(attempts);
+  };
+
+  // Get latest attempt for current user on a quiz
+  const findLatestAttempt = async (req, res) => {
+    const { quizId } = req.params;
+    const userId = req.session?.currentUser?._id;
+    if (!userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const attempt = await dao.findLatestAttempt(quizId, userId);
+    res.json(attempt);
+  };
+
+  // Get attempt count for current user on a quiz
+  const countAttempts = async (req, res) => {
+    const { quizId } = req.params;
+    const userId = req.session?.currentUser?._id;
+    if (!userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const count = await dao.countAttempts(quizId, userId);
+    res.json({ count });
+  };
+
+  // Submit a quiz attempt
+  const submitAttempt = async (req, res) => {
+    const { quizId } = req.params;
+    const userId = req.session?.currentUser?._id;
+    if (!userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const { answers } = req.body;
+    try {
+      const attempt = await dao.submitAttempt(quizId, userId, answers);
+      res.json(attempt);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  };
+
   // ==================== REGISTER ROUTES ====================
 
   // Quiz routes
@@ -92,4 +143,10 @@ export default function QuizzesRoutes(app) {
   app.post("/api/quizzes/:quizId/questions", addQuestion);
   app.put("/api/quizzes/:quizId/questions/:questionId", updateQuestion);
   app.delete("/api/quizzes/:quizId/questions/:questionId", deleteQuestion);
+
+  // Attempt routes
+  app.get("/api/quizzes/:quizId/attempts", findAttemptsForQuiz);
+  app.get("/api/quizzes/:quizId/attempts/latest", findLatestAttempt);
+  app.get("/api/quizzes/:quizId/attempts/count", countAttempts);
+  app.post("/api/quizzes/:quizId/attempts", submitAttempt);
 }

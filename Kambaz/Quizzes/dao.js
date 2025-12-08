@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import model from "./model.js";
+import attemptModel from "./attemptModel.js";
 
 export default function QuizzesDao() {
   // Find all quizzes for a course
@@ -84,6 +85,70 @@ export default function QuizzesDao() {
     }
   };
 
+  // ==================== ATTEMPTS ====================
+
+  // Get all attempts for a user on a quiz
+  const findAttemptsForQuiz = (quizId, userId) => {
+    return attemptModel.find({ quiz: quizId, user: userId }).sort({ submittedAt: -1 });
+  };
+
+  // Get the latest attempt for a user on a quiz
+  const findLatestAttempt = async (quizId, userId) => {
+    const attempts = await attemptModel.find({ quiz: quizId, user: userId }).sort({ submittedAt: -1 }).limit(1);
+    return attempts[0] || null;
+  };
+
+  // Count attempts for a user on a quiz
+  const countAttempts = (quizId, userId) => {
+    return attemptModel.countDocuments({ quiz: quizId, user: userId });
+  };
+
+  // Submit a quiz attempt
+  const submitAttempt = async (quizId, userId, answers) => {
+    const quiz = await model.findById(quizId);
+    if (!quiz) throw new Error("Quiz not found");
+
+    // Calculate score
+    let score = 0;
+    const gradedAnswers = answers.map((ans) => {
+      const question = quiz.questions.find((q) => q._id === ans.questionId);
+      if (!question) return { ...ans, isCorrect: false, pointsEarned: 0 };
+
+      let isCorrect = false;
+      if (question.type === "MULTIPLE_CHOICE") {
+        const correctChoice = question.choices.find((c) => c.isCorrect);
+        isCorrect = correctChoice && ans.answer === correctChoice._id;
+      } else if (question.type === "TRUE_FALSE") {
+        isCorrect = ans.answer === question.correctAnswer;
+      } else if (question.type === "FILL_IN_BLANK") {
+        isCorrect = question.blankAnswers.some(
+          (correct) => correct.toLowerCase().trim() === String(ans.answer).toLowerCase().trim()
+        );
+      }
+
+      const pointsEarned = isCorrect ? question.points : 0;
+      score += pointsEarned;
+
+      return { ...ans, isCorrect, pointsEarned };
+    });
+
+    // Get attempt number
+    const attemptCount = await countAttempts(quizId, userId);
+
+    const attempt = {
+      _id: uuidv4(),
+      quiz: quizId,
+      user: userId,
+      answers: gradedAnswers,
+      score,
+      totalPoints: quiz.points,
+      attemptNumber: attemptCount + 1,
+      submittedAt: new Date(),
+    };
+
+    return attemptModel.create(attempt);
+  };
+
   return {
     findQuizzesForCourse,
     findQuizById,
@@ -94,5 +159,10 @@ export default function QuizzesDao() {
     addQuestion,
     updateQuestion,
     deleteQuestion,
+    // Attempts
+    findAttemptsForQuiz,
+    findLatestAttempt,
+    countAttempts,
+    submitAttempt,
   };
 }
