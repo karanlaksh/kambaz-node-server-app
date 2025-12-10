@@ -3,17 +3,14 @@ import model from "./model.js";
 import attemptModel from "./attemptModel.js";
 
 export default function QuizzesDao() {
-  // Find all quizzes for a course
   const findQuizzesForCourse = (courseId) => {
     return model.find({ course: courseId }).sort({ availableDate: 1 });
   };
 
-  // Find a single quiz by ID
   const findQuizById = (quizId) => {
     return model.findById(quizId);
   };
 
-  // Create a new quiz
   const createQuiz = (quiz) => {
     const newQuiz = { 
       ...quiz, 
@@ -25,58 +22,46 @@ export default function QuizzesDao() {
     return model.create(newQuiz);
   };
 
-  // Update a quiz
   const updateQuiz = (quizId, quizUpdates) => {
     return model.updateOne({ _id: quizId }, { $set: quizUpdates });
   };
 
-  // Delete a quiz
   const deleteQuiz = (quizId) => {
     return model.deleteOne({ _id: quizId });
   };
 
-  // Publish/unpublish a quiz
   const publishQuiz = (quizId, published) => {
     return model.updateOne({ _id: quizId }, { $set: { published } });
   };
 
-  // ==================== QUESTIONS ====================
-
-  // Add a question to a quiz
   const addQuestion = async (quizId, question) => {
     const newQuestion = { ...question, _id: uuidv4() };
     await model.updateOne(
       { _id: quizId },
       { $push: { questions: newQuestion } }
     );
-    // Recalculate points
     await recalculatePoints(quizId);
     return newQuestion;
   };
 
-  // Update a question
   const updateQuestion = async (quizId, questionId, questionUpdates) => {
     await model.updateOne(
       { _id: quizId, "questions._id": questionId },
       { $set: { "questions.$": { ...questionUpdates, _id: questionId } } }
     );
-    // Recalculate points
     await recalculatePoints(quizId);
     return questionUpdates;
   };
 
-  // Delete a question
   const deleteQuestion = async (quizId, questionId) => {
     await model.updateOne(
       { _id: quizId },
       { $pull: { questions: { _id: questionId } } }
     );
-    // Recalculate points
     await recalculatePoints(quizId);
     return { deleted: true };
   };
 
-  // Recalculate total points for a quiz
   const recalculatePoints = async (quizId) => {
     const quiz = await model.findById(quizId);
     if (quiz) {
@@ -85,45 +70,48 @@ export default function QuizzesDao() {
     }
   };
 
-  // ==================== ATTEMPTS ====================
-
-  // Get all attempts for a user on a quiz
   const findAttemptsForQuiz = (quizId, userId) => {
     return attemptModel.find({ quiz: quizId, user: userId }).sort({ submittedAt: -1 });
   };
 
-  // Get the latest attempt for a user on a quiz
   const findLatestAttempt = async (quizId, userId) => {
     const attempts = await attemptModel.find({ quiz: quizId, user: userId }).sort({ submittedAt: -1 }).limit(1);
     return attempts[0] || null;
   };
 
-  // Count attempts for a user on a quiz
   const countAttempts = (quizId, userId) => {
     return attemptModel.countDocuments({ quiz: quizId, user: userId });
   };
 
-  // Submit a quiz attempt
   const submitAttempt = async (quizId, userId, answers) => {
     const quiz = await model.findById(quizId);
     if (!quiz) throw new Error("Quiz not found");
 
-    // Calculate score
     let score = 0;
     const gradedAnswers = answers.map((ans) => {
       const question = quiz.questions.find((q) => q._id === ans.questionId);
       if (!question) return { ...ans, isCorrect: false, pointsEarned: 0 };
 
       let isCorrect = false;
+      
       if (question.type === "MULTIPLE_CHOICE") {
         const correctChoice = question.choices.find((c) => c.isCorrect);
         isCorrect = correctChoice && ans.answer === correctChoice._id;
       } else if (question.type === "TRUE_FALSE") {
         isCorrect = ans.answer === question.correctAnswer;
       } else if (question.type === "FILL_IN_BLANK") {
-        isCorrect = question.blankAnswers.some(
-          (correct) => correct.toLowerCase().trim() === String(ans.answer).toLowerCase().trim()
-        );
+        if (question.blanks && question.blanks.length > 0 && Array.isArray(ans.answer)) {
+          isCorrect = question.blanks.every((blank, index) => {
+            const studentAnswer = ans.answer[index] || "";
+            return blank.answers.some(
+              (correct) => correct.toLowerCase().trim() === String(studentAnswer).toLowerCase().trim()
+            );
+          });
+        } else if (question.blankAnswers && question.blankAnswers.length > 0) {
+          isCorrect = question.blankAnswers.some(
+            (correct) => correct.toLowerCase().trim() === String(ans.answer).toLowerCase().trim()
+          );
+        }
       }
 
       const pointsEarned = isCorrect ? question.points : 0;
@@ -132,7 +120,6 @@ export default function QuizzesDao() {
       return { ...ans, isCorrect, pointsEarned };
     });
 
-    // Get attempt number
     const attemptCount = await countAttempts(quizId, userId);
 
     const attempt = {
@@ -159,7 +146,6 @@ export default function QuizzesDao() {
     addQuestion,
     updateQuestion,
     deleteQuestion,
-    // Attempts
     findAttemptsForQuiz,
     findLatestAttempt,
     countAttempts,
